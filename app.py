@@ -1048,7 +1048,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚡ Active Attacks: **{stats['active_attacks']}**\n"
         f"👥 Users: {len(users)}\n"
         f"💥 Total Attacks: {stats['total_attacks']}\n"
-        f"📡 Methods: ALEX-BIG (4c), ALEX-Gbps (2c)",
+        f"📡 Methods: UDP-BIG (4c), UDP-Gbps (2c)",
         parse_mode='Markdown',
     )
 
@@ -1154,14 +1154,14 @@ async def attack_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     keyboard = [
-        [InlineKeyboardButton("💥 ALEX-BIG (4c)", callback_data="method_ALEX-BIG")],
-        [InlineKeyboardButton("🚀 ALEX-Gbps (2c)", callback_data="method_ALEX-Gbps")],
+        [InlineKeyboardButton("💥 UDP-BIG (4c)", callback_data="method_UDP-BIG")],
+        [InlineKeyboardButton("🚀 UDP-Gbps (2c)", callback_data="method_UDP-Gbps")],
         [InlineKeyboardButton("🔙 BACK", callback_data="back")],
     ]
     await query.edit_message_text(
         "💥 *Select method*\n\n"
-        "• **ALEX-BIG** — normal (4 concurrent)\n"
-        "• **ALEX-Gbps** — bota (2 concurrent)\n\n"
+        "• **UDP-BIG** — normal (4 concurrent)\n"
+        "• **UDP-Gbps** — bota (2 concurrent)\n\n"
         "After selecting, send: `IP PORT TIME`",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown',
@@ -1195,7 +1195,7 @@ async def my_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if plan == "free" and not is_owner:
         text = "👤 *MY PLAN*\n\n📊 Plan: 🆓 FREE\n\n💡 `/redeem CODE` to upgrade."
     elif is_owner:
-        text = "👑 *OWNER ACCESS*\n\n📊 Plan: 💎 PREMIUM\n📡 ALEX-BIG (4c) · ALEX-Gbps (2c)"
+        text = "👑 *OWNER ACCESS*\n\n📊 Plan: 💎 PREMIUM\n📡 UDP-BIG (4c) · UDP-Gbps (2c)"
     elif expiry:
         days_left = max(0, (expiry - datetime.now()).days)
         text = (f"👤 *MY PLAN*\n\n📊 Plan: 💎 PREMIUM\n"
@@ -1579,7 +1579,7 @@ async def owner_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👑 *OWNER PANEL*\n\n"
         f"Status: {'⏸️ PAUSED' if pause_status else '🟢 ACTIVE'}\n"
         f"⚡ Active Attacks: {stats['active_attacks']}\n"
-        f"📡 Methods: ALEX-BIG (4c), ALEX-Gbps (2c)",
+        f"📡 Methods: UDP-BIG (4c), UDP-Gbps (2c)",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown',
     )
@@ -1889,7 +1889,7 @@ async def owner_api_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not API_TOKEN:
         await query.edit_message_text("❌ API_TOKEN missing in .env")
         return
-    r = await send_api_attack("1.1.1.1", 80, 10, "ALEX-BIG")
+    r = await send_api_attack("1.1.1.1", 80, 10, "UDP-BIG")
     if r.get("success"):
         text = (f"✅ API OK\n"
                 f"Status: `{r.get('status')}` | {r.get('elapsed', 0):.2f}s\n"
@@ -1967,11 +1967,11 @@ def main():
         print("⚠️ API_TOKEN not set — attacks will fail.")
 
     print("=" * 60)
-    print("🔥 GURU ATTACK BOT — alex.works API")
+    print("🔥 GURU ATTACK BOT — UDP.works API")
     print("=" * 60)
     print("Methods:")
-    print("  ALEX-BIG   → /api/start       (4 concurrent)")
-    print("  ALEX-Gbps  → /api/bota/start  (2 concurrent)")
+    print("  UDP-BIG   → /api/start       (4 concurrent)")
+    print("  UDP-Gbps  → /api/bota/start  (2 concurrent)")
     print("=" * 60)
 
     bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
