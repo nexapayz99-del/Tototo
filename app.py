@@ -25,26 +25,26 @@ load_dotenv()
 # ===== CONFIGURATION =====
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 API_TOKEN = os.getenv("API_TOKEN", "")
-API_BASE = os.getenv("API_BASE", "https://alex.works")
+API_BASE = os.getenv("API_BASE", "https://stresser.works")
 MONGO_URI = os.getenv("MONGO_URI")
 OWNER_ID = int(os.getenv("OWNER_ID", "123456789"))
 PSEUDO_OWNER_ID = int(os.getenv("PSEUDO_OWNER_ID", "987654321"))
 
 MIN_DURATION = 60
-MAX_DURATION = 80
+MAX_DURATION = 200
 RATE_LIMIT_SECONDS = 10
 
 # ===== ATTACK METHODS =====
-ATTACK_METHODS = ["ALEX-BIG", "ALEX-Gbps"]
+ATTACK_METHODS = ["UDP-BIG", "UDP-Gbps"]
 
 METHOD_CONCURRENT = {
-    "ALEX-BIG": 4,
-    "ALEX-Gbps": 2,
+    "UDP-BIG": 4,
+    "UDP-Gbps": 2,
 }
 
 METHOD_ENDPOINT = {
-    "ALEX-BIG": "/api/start",
-    "ALEX-Gbps": "/api/bota/start",
+    "UDP-BIG": "/api/start",
+    "UDP-Gbps": "/api/bota/start",
 }
 
 logging.basicConfig(
