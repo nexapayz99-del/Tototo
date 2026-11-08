@@ -938,7 +938,7 @@ async def attack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`/attack 1.2.3.4 80 60` (UDP-BIG, 4c)\n"
             "`/attack 1.2.3.4 80 60 UDP-Gbps` (2c)\n\n"
             f"⏱️ Time: {MIN_DURATION}-{MAX_DURATION}s\n"
-            "📡 Methods: ALEX-BIG (4c), ALEX-Gbps (2c)",
+            "📡 Methods: UDP-BIG (4c), UDP-Gbps (2c)",
             parse_mode='Markdown',
         )
         return
@@ -947,9 +947,9 @@ async def attack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target = args[0]
         port = int(args[1])
         duration = int(args[2])
-        method = args[3].upper() if len(args) > 3 else "ALEX-BIG"
+        method = args[3].upper() if len(args) > 3 else "UDP-BIG"
         if method not in ATTACK_METHODS:
-            method = "ALEX-BIG"
+            method = "UDP-BIG"
 
         if duration < MIN_DURATION or duration > MAX_DURATION:
             await update.message.reply_text(
@@ -1007,7 +1007,7 @@ async def testapi_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     args = context.args
-    method = "ALEX-BIG"
+    method = "UDP-BIG"
     host = "1.1.1.1"
     port = 80
     if args and len(args) >= 3:
