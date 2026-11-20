@@ -35,25 +35,25 @@ MAX_DURATION = 80
 RATE_LIMIT_SECONDS = 10
 
 # ===== ATTACK METHODS — BOTH FIRE TOGETHER EVERY ATTACK =====
-# UDP-BIG  → /api/start        → concs=2      (L4 pool)
 # UDP-Gbps → /api/botnet/start → concurrent=2 (botnet pool)
+# UDP-BIG  → /api/start        → concs=2      (L4 pool)
 # Different pools → can run at the same time
 
-DUAL_METHODS = ["UDP-BIG", "UDP-Gbps"]
+DUAL_METHODS = ["UDP-Gbps", "UDP-BIG"]
 
 METHOD_CONCURRENT = {
-    "UDP-BIG": 2,       # your requirement: 2 concurrent each
-    "UDP-Gbps": 2,
+    "UDP-Gbps": 2,       # your requirement: 2 concurrent each
+    "UDP-BIG": 2,
 }
 
 METHOD_ENDPOINT = {
-    "UDP-BIG": "/api/start",
     "UDP-Gbps": "/api/botnet/start",
+    "UDP-BIG": "/api/start",
 }
 
 METHOD_CONCURRENT_PARAM = {
-    "UDP-BIG": "concs",
     "UDP-Gbps": "concurrent",
+    "UDP-BIG": "concs",
 }
 
 
